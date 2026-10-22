@@ -1,0 +1,9 @@
+node_modules/
+data/
+*.db
+*.db-shm
+*.db-wal
+.env
+
+# Service account keys are secrets - never commit them
+keys/*.json

@@ -1,0 +1,570 @@
+<!doctype html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Smart Indexer Pro</title>
+  <script src="https://cdn.tailwindcss.com/3.4.17"></script>
+  <script>
+    tailwind.config = { darkMode: 'class', theme: { extend: { fontFamily: { mono: ['ui-monospace', 'SFMono-Regular', 'Consolas', 'monospace'] } } } };
+  </script>
+  <style>
+    body { background: #0b0f17; }
+    .card { background: #111827; border: 1px solid #1f2937; border-radius: 0.75rem; }
+    .input { width: 100%; background: #0b0f17; border: 1px solid #263244; border-radius: 0.5rem; padding: 0.55rem 0.75rem; color: #e5e7eb; outline: none; }
+    .input:focus { border-color: #6366f1; box-shadow: 0 0 0 3px rgba(99, 102, 241, .25); }
+    .input:disabled { opacity: .45; cursor: not-allowed; }
+    .btn { display: inline-flex; align-items: center; gap: .4rem; border-radius: .5rem; padding: .5rem .9rem; font-size: .875rem; font-weight: 500; transition: background .15s, opacity .15s; white-space: nowrap; }
+    .btn:disabled { opacity: .5; cursor: not-allowed; }
+    .btn-primary { background: #6366f1; color: #fff; } .btn-primary:hover:not(:disabled) { background: #4f46e5; }
+    .btn-ghost { background: #1f2937; color: #d1d5db; } .btn-ghost:hover:not(:disabled) { background: #374151; }
+    .btn-danger { background: rgba(239, 68, 68, .12); color: #fca5a5; } .btn-danger:hover:not(:disabled) { background: rgba(239, 68, 68, .22); }
+    .label { display: block; font-size: .75rem; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: #9ca3af; margin-bottom: .35rem; }
+    .badge { display: inline-flex; align-items: center; gap: .3rem; border-radius: 9999px; padding: .1rem .55rem; font-size: .72rem; font-weight: 600; white-space: nowrap; }
+    .dot { width: .45rem; height: .45rem; border-radius: 9999px; background: currentColor; }
+    .pulse { animation: pulse 1.2s ease-in-out infinite; } @keyframes pulse { 50% { opacity: .35; } }
+    table td, table th { padding: .55rem .75rem; }
+    ::-webkit-scrollbar { width: 8px; height: 8px; } ::-webkit-scrollbar-thumb { background: #374151; border-radius: 8px; }
+  </style>
+</head>
+<body class="text-gray-200 min-h-screen antialiased">
+  <!-- Header -->
+  <header class="border-b border-gray-800 bg-[#0d121c]/90 backdrop-blur sticky top-0 z-30">
+    <div class="max-w-7xl mx-auto px-4 py-3 flex flex-wrap items-center gap-3">
+      <div class="flex items-center gap-2 mr-auto">
+        <div class="w-8 h-8 rounded-lg bg-indigo-500/20 text-indigo-300 grid place-items-center font-bold">SI</div>
+        <div>
+          <h1 class="font-semibold text-white leading-tight">Smart Indexer Pro</h1>
+          <p class="text-xs text-gray-500 leading-tight">Google Indexing API · multi-key rotation · bridge mode</p>
+        </div>
+      </div>
+      <span id="queueBadge" class="badge bg-gray-800 text-gray-400"><span class="dot"></span>…</span>
+      <button id="pauseBtn" class="btn btn-ghost">Pause</button>
+      <button id="syncBtn" class="btn btn-ghost">Sync Keys</button>
+      <button id="settingsBtn" class="btn btn-ghost">Settings</button>
+    </div>
+  </header>
+
+  <main class="max-w-7xl mx-auto px-4 py-6 space-y-6">
+    <div id="banners" class="space-y-2"></div>
+
+    <!-- Stats -->
+    <section class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div class="card p-4">
+        <p class="label">Active Keys</p>
+        <p class="text-3xl font-semibold text-white"><span id="statKeys">0</span><span class="text-base text-gray-500"> / <span id="statKeysTotal">0</span></span></p>
+        <p class="text-xs text-gray-500 mt-1"><span id="statProjects">0</span> project(s) · quota is per project</p>
+      </div>
+      <div class="card p-4">
+        <p class="label">Remaining Daily Quota</p>
+        <p class="text-3xl font-semibold text-white"><span id="statRemaining">0</span><span class="text-base text-gray-500"> / <span id="statQuota">0</span></span></p>
+        <div class="h-1.5 bg-gray-800 rounded-full mt-2 overflow-hidden"><div id="quotaBar" class="h-full bg-indigo-500 transition-all" style="width:0%"></div></div>
+        <p class="text-xs text-gray-500 mt-1">Resets at midnight Pacific (<span id="statDay">—</span>)</p>
+      </div>
+      <div class="card p-4">
+        <p class="label">Submitted Today</p>
+        <p id="statSubmitted" class="text-3xl font-semibold text-white">0</p>
+        <p class="text-xs text-gray-500 mt-1"><span id="statPending">0</span> pending in queue</p>
+      </div>
+      <div class="card p-4">
+        <p class="label">Success / Failed Today</p>
+        <p class="text-3xl font-semibold"><span id="statSuccess" class="text-emerald-400">0</span><span class="text-gray-600"> / </span><span id="statFailed" class="text-red-400">0</span></p>
+        <p class="text-xs text-gray-500 mt-1">Now: <span id="statCurrent" class="font-mono">idle</span></p>
+      </div>
+    </section>
+
+    <section class="grid lg:grid-cols-3 gap-6">
+      <!-- Submission form -->
+      <form id="submitForm" class="card p-5 lg:col-span-2 space-y-4">
+        <div class="flex items-center justify-between">
+          <h2 class="font-semibold text-white">Bulk Submit</h2>
+          <span class="text-xs text-gray-500"><span id="urlCount">0</span> URL(s)</span>
+        </div>
+        <textarea id="urls" rows="9" class="input font-mono text-sm resize-y" placeholder="https://example.com/page-1&#10;https://example.com/page-2&#10;One URL per line…"></textarea>
+        <div class="grid sm:grid-cols-3 gap-3">
+          <div>
+            <label class="label" for="mode">Mode</label>
+            <select id="mode" class="input">
+              <option value="DIRECT">DIRECT · owned domain</option>
+              <option value="BRIDGE">BRIDGE · via Cloudflare Worker</option>
+            </select>
+          </div>
+          <div>
+            <label class="label" for="strategy">Bridge Strategy</label>
+            <select id="strategy" class="input">
+              <option value="HTML_BRIDGE">HTML_BRIDGE · link page</option>
+              <option value="301_REDIRECT">301_REDIRECT · redirect</option>
+            </select>
+          </div>
+          <div>
+            <label class="label" for="action">Action</label>
+            <select id="action" class="input">
+              <option value="URL_UPDATED">URL_UPDATED</option>
+              <option value="URL_DELETED">URL_DELETED</option>
+            </select>
+          </div>
+        </div>
+        <p id="modeHelp" class="text-xs text-gray-500"></p>
+        <div class="flex items-center gap-3">
+          <button id="submitBtn" type="submit" class="btn btn-primary">Add to Queue</button>
+          <p id="submitMsg" class="text-sm"></p>
+        </div>
+      </form>
+
+      <!-- Keys -->
+      <div class="card p-5 flex flex-col">
+        <div class="flex items-center justify-between mb-3">
+          <h2 class="font-semibold text-white">Service Accounts</h2>
+          <span class="text-xs text-gray-500">./keys/*.json</span>
+        </div>
+        <div id="keyList" class="space-y-3 overflow-y-auto max-h-[420px] pr-1"></div>
+      </div>
+    </section>
+
+    <!-- Logs -->
+    <section class="card">
+      <div class="p-4 border-b border-gray-800 flex flex-wrap items-center gap-2">
+        <h2 class="font-semibold text-white mr-auto">Live Logs &amp; History</h2>
+        <input id="search" class="input !w-56 text-sm" placeholder="Search URL, key, message…" />
+        <select id="filterStatus" class="input !w-40 text-sm">
+          <option value="">All statuses</option>
+          <option value="pending">Pending</option>
+          <option value="processing">Processing</option>
+          <option value="success">Success</option>
+          <option value="failed">Failed</option>
+          <option value="quota_exceeded">Quota Exceeded</option>
+        </select>
+        <select id="filterMode" class="input !w-32 text-sm">
+          <option value="">All modes</option>
+          <option value="DIRECT">DIRECT</option>
+          <option value="BRIDGE">BRIDGE</option>
+        </select>
+        <button id="retryBtn" class="btn btn-ghost">Retry Failed</button>
+        <button id="clearBtn" class="btn btn-danger">Clear Pending</button>
+        <button id="exportBtn" class="btn btn-ghost">Export CSV</button>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead class="text-left text-xs uppercase tracking-wide text-gray-500 bg-[#0d121c]">
+            <tr>
+              <th>URL</th>
+              <th>Mode</th>
+              <th>Bridge URL</th>
+              <th>Service Account</th>
+              <th>Status</th>
+              <th>Response</th>
+              <th>Time</th>
+            </tr>
+          </thead>
+          <tbody id="logBody" class="divide-y divide-gray-800/70"></tbody>
+        </table>
+      </div>
+      <div class="p-3 border-t border-gray-800 flex items-center justify-between text-sm text-gray-400">
+        <span id="pageInfo">—</span>
+        <div class="flex gap-2">
+          <button id="prevBtn" class="btn btn-ghost">Prev</button>
+          <button id="nextBtn" class="btn btn-ghost">Next</button>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- Settings modal -->
+  <div id="settingsModal" class="fixed inset-0 z-40 hidden">
+    <div data-close class="absolute inset-0 bg-black/70"></div>
+    <div class="relative max-w-lg mx-auto mt-16 card p-6 space-y-4 shadow-2xl">
+      <div class="flex items-center justify-between">
+        <h2 class="font-semibold text-white text-lg">Settings</h2>
+        <button data-close class="text-gray-500 hover:text-white text-xl leading-none">&times;</button>
+      </div>
+      <div>
+        <label class="label" for="sBridge">Bridge Subdomain URL</label>
+        <input id="sBridge" class="input" placeholder="https://idx.yourdomain.com" />
+        <p class="text-xs text-gray-500 mt-1">Your deployed Cloudflare Worker. This domain must be verified in Search Console with the service accounts as Owners.</p>
+      </div>
+      <div>
+        <label class="label" for="sKey">Cloudflare Worker Secret API Key</label>
+        <input id="sKey" type="password" class="input" autocomplete="off" />
+        <label class="flex items-center gap-2 text-xs text-gray-400 mt-1"><input id="sKeyClear" type="checkbox" /> Remove saved key</label>
+      </div>
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="label" for="sDelay">Delay between requests (ms)</label>
+          <input id="sDelay" type="number" min="0" class="input" />
+        </div>
+        <div>
+          <label class="label" for="sLimit">Daily limit per project</label>
+          <input id="sLimit" type="number" min="1" class="input" />
+        </div>
+      </div>
+      <p id="settingsMsg" class="text-sm"></p>
+      <div class="flex justify-between gap-2">
+        <button id="testBridgeBtn" class="btn btn-ghost">Test Bridge</button>
+        <div class="flex gap-2">
+          <button data-close class="btn btn-ghost">Cancel</button>
+          <button id="saveSettingsBtn" class="btn btn-primary">Save</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast" class="fixed bottom-4 right-4 z-50 hidden max-w-sm card px-4 py-3 text-sm shadow-xl"></div>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    const fmtTime = (iso) => (iso ? new Date(iso).toLocaleString() : '—');
+    const PAGE = 50;
+    let page = 0;
+    let stats = null;
+    let settings = null;
+
+    async function api(path, opts = {}) {
+      const res = await fetch(path, {
+        ...opts,
+        headers: { 'Content-Type': 'application/json', ...(opts.headers || {}) },
+        body: opts.body ? JSON.stringify(opts.body) : undefined,
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw Object.assign(new Error(data.error || res.statusText), { data });
+      return data;
+    }
+
+    let toastTimer;
+    function toast(text, kind = 'info') {
+      const el = $('toast');
+      el.textContent = text;
+      el.className = `fixed bottom-4 right-4 z-50 max-w-sm card px-4 py-3 text-sm shadow-xl ${kind === 'error' ? 'text-red-300 border-red-900' : kind === 'ok' ? 'text-emerald-300 border-emerald-900' : 'text-gray-200'}`;
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => el.classList.add('hidden'), 4500);
+    }
+
+    const STATUS_STYLE = {
+      pending: ['bg-gray-700/50 text-gray-300', 'Pending'],
+      processing: ['bg-sky-500/15 text-sky-300', 'Processing'],
+      success: ['bg-emerald-500/15 text-emerald-300', 'Success'],
+      failed: ['bg-red-500/15 text-red-300', 'Failed'],
+      quota_exceeded: ['bg-amber-500/15 text-amber-300', 'Quota Exceeded'],
+    };
+    const QUEUE_STYLE = {
+      idle: ['bg-gray-800 text-gray-400', 'Idle'],
+      running: ['bg-sky-500/15 text-sky-300', 'Processing'],
+      paused: ['bg-amber-500/15 text-amber-300', 'Paused'],
+      quota_exhausted: ['bg-red-500/15 text-red-300', 'Quota exhausted'],
+      no_keys: ['bg-red-500/15 text-red-300', 'No active keys'],
+      rate_limited: ['bg-amber-500/15 text-amber-300', 'Rate limited'],
+    };
+    const KEY_STYLE = {
+      active: 'bg-emerald-500/15 text-emerald-300',
+      disabled: 'bg-gray-700/50 text-gray-400',
+      invalid: 'bg-red-500/15 text-red-300',
+      missing: 'bg-amber-500/15 text-amber-300',
+    };
+
+    const badge = (cls, text, pulse) => `<span class="badge ${cls}"><span class="dot ${pulse ? 'pulse' : ''}"></span>${esc(text)}</span>`;
+
+    /* ------------------------------ stats ------------------------------ */
+
+    async function loadStats() {
+      try {
+        stats = await api('/api/stats');
+      } catch (err) {
+        return renderBanners([{ kind: 'error', text: `Cannot reach the server: ${err.message}` }]);
+      }
+      const { keys, quota, today, queue } = stats;
+      $('statKeys').textContent = keys.active;
+      $('statKeysTotal').textContent = keys.total;
+      $('statProjects').textContent = quota.projects.filter((p) => p.activeKeys > 0).length;
+      $('statRemaining').textContent = quota.remaining;
+      $('statQuota').textContent = quota.total;
+      $('quotaBar').style.width = quota.total ? `${(quota.remaining / quota.total) * 100}%` : '0%';
+      $('quotaBar').className = `h-full transition-all ${quota.remaining === 0 ? 'bg-red-500' : quota.remaining / Math.max(1, quota.total) < 0.2 ? 'bg-amber-500' : 'bg-indigo-500'}`;
+      $('statDay').textContent = quota.day;
+      $('statSubmitted').textContent = today.submitted;
+      $('statSuccess').textContent = today.success;
+      $('statFailed').textContent = today.failed;
+      $('statPending').textContent = queue.counts.pending + queue.counts.quota_exceeded + queue.counts.processing;
+      $('statCurrent').textContent = queue.current ? queue.current.slice(0, 48) : queue.status;
+
+      const [cls, text] = QUEUE_STYLE[queue.status] || QUEUE_STYLE.idle;
+      $('queueBadge').outerHTML = `<span id="queueBadge" class="badge ${cls}"><span class="dot ${queue.status === 'running' ? 'pulse' : ''}"></span>${text}${queue.dryRun ? ' · DRY RUN' : ''}</span>`;
+      $('pauseBtn').textContent = queue.paused ? 'Resume' : 'Pause';
+
+      const banners = [];
+      if (queue.dryRun) banners.push({ kind: 'info', text: 'DRY RUN mode: Google is not contacted and no quota is used. Restart without --dry-run to submit for real.' });
+      if (queue.status === 'quota_exhausted' || queue.status === 'no_keys' || queue.status === 'rate_limited') banners.push({ kind: 'error', text: queue.message });
+      if (!stats.bridgeConfigured) banners.push({ kind: 'warn', text: 'BRIDGE mode is not configured yet. Open Settings to add your Worker URL and API key.' });
+      renderBanners(banners);
+      renderKeys(keys.list);
+    }
+
+    function renderBanners(list) {
+      const styles = { error: 'border-red-900 bg-red-500/10 text-red-200', warn: 'border-amber-900 bg-amber-500/10 text-amber-200', info: 'border-sky-900 bg-sky-500/10 text-sky-200' };
+      $('banners').innerHTML = list.map((b) => `<div class="rounded-lg border px-4 py-2.5 text-sm ${styles[b.kind]}">${esc(b.text)}</div>`).join('');
+    }
+
+    function renderKeys(list) {
+      if (!list.length) {
+        $('keyList').innerHTML = `<p class="text-sm text-gray-500">No keys found. Put Google service account <span class="font-mono">.json</span> files in <span class="font-mono">./keys</span> and click Sync Keys.</p>`;
+        return;
+      }
+      const limit = stats.quota.limit;
+      $('keyList').innerHTML = list.map((k) => {
+        const project = stats.quota.projects.find((p) => p.project_id === k.project_id);
+        const projectUsed = project ? Math.min(project.used, limit) : 0;
+        const pct = (projectUsed / limit) * 100;
+        const canToggle = k.status !== 'missing';
+        return `
+          <div class="rounded-lg border border-gray-800 bg-[#0d121c] p-3">
+            <div class="flex items-start justify-between gap-2">
+              <div class="min-w-0">
+                <p class="text-sm text-white truncate" title="${esc(k.client_email)}">${esc(k.client_email || k.file_name)}</p>
+                <p class="text-xs text-gray-500 truncate">${esc(k.file_name)} · ${esc(k.project_id || '—')}</p>
+              </div>
+              <span class="badge ${KEY_STYLE[k.status] || ''}">${esc(k.exhausted && k.status === 'active' ? 'exhausted' : k.status)}</span>
+            </div>
+            <div class="mt-2 flex items-center gap-2 text-xs text-gray-400">
+              <div class="flex-1 h-1.5 bg-gray-800 rounded-full overflow-hidden"><div class="h-full ${k.project_remaining === 0 ? 'bg-red-500' : 'bg-indigo-500'}" style="width:${pct}%"></div></div>
+              <span title="Used today by this key / project used of limit">${k.used} · ${projectUsed}/${limit}</span>
+            </div>
+            ${k.last_error ? `<p class="mt-2 text-xs text-red-300/80 break-words">${esc(k.last_error)}</p>` : ''}
+            <div class="mt-2 flex gap-2">
+              <button class="btn btn-ghost !py-1 !px-2 !text-xs" data-test="${k.id}" ${k.status === 'missing' ? 'disabled' : ''}>Test auth</button>
+              ${canToggle ? `<button class="btn btn-ghost !py-1 !px-2 !text-xs" data-toggle="${k.id}" data-enable="${k.status !== 'active'}">${k.status === 'active' ? 'Disable' : 'Enable'}</button>` : ''}
+            </div>
+          </div>`;
+      }).join('');
+    }
+
+    $('keyList').addEventListener('click', async (e) => {
+      const btn = e.target.closest('button');
+      if (!btn) return;
+      btn.disabled = true;
+      try {
+        if (btn.dataset.test) {
+          const r = await api(`/api/keys/${btn.dataset.test}/test`, { method: 'POST' });
+          toast(r.message, r.ok ? 'ok' : 'error');
+        } else if (btn.dataset.toggle) {
+          await api(`/api/keys/${btn.dataset.toggle}/toggle`, { method: 'POST', body: { enabled: btn.dataset.enable === 'true' } });
+        }
+      } catch (err) {
+        toast(err.message, 'error');
+      }
+      loadStats();
+    });
+
+    /* ------------------------------ logs ------------------------------- */
+
+    function logQuery() {
+      const p = new URLSearchParams();
+      if ($('filterStatus').value) p.set('status', $('filterStatus').value);
+      if ($('filterMode').value) p.set('mode', $('filterMode').value);
+      if ($('search').value.trim()) p.set('search', $('search').value.trim());
+      return p;
+    }
+
+    async function loadLogs() {
+      const p = logQuery();
+      p.set('limit', PAGE);
+      p.set('offset', page * PAGE);
+      let data;
+      try {
+        data = await api(`/api/logs?${p}`);
+      } catch {
+        return;
+      }
+      if (!data.rows.length && page > 0) {
+        page = Math.max(0, Math.ceil(data.total / PAGE) - 1);
+        return loadLogs();
+      }
+      $('logBody').innerHTML = data.rows.length
+        ? data.rows.map((r) => {
+            const [cls, label] = STATUS_STYLE[r.status] || ['', r.status];
+            return `
+              <tr class="hover:bg-white/[0.02] align-top">
+                <td class="max-w-[280px]"><a href="${esc(r.url)}" target="_blank" rel="noopener noreferrer" class="font-mono text-xs text-gray-200 hover:text-indigo-300 break-all">${esc(r.url)}</a></td>
+                <td><span class="text-xs ${r.mode === 'BRIDGE' ? 'text-violet-300' : 'text-gray-300'}">${esc(r.mode)}</span>${r.strategy ? `<div class="text-[10px] text-gray-500">${esc(r.strategy)}</div>` : ''}<div class="text-[10px] text-gray-600">${esc(r.action)}</div></td>
+                <td class="max-w-[220px]">${r.bridge_url ? `<a href="${esc(r.bridge_url)}" target="_blank" rel="noopener noreferrer" class="font-mono text-xs text-violet-300 hover:underline break-all">${esc(r.bridge_url)}</a>` : '<span class="text-gray-600">—</span>'}</td>
+                <td class="max-w-[200px] text-xs text-gray-400 break-all">${esc(r.service_account || '—')}</td>
+                <td>${badge(cls, label, r.status === 'processing')}</td>
+                <td class="max-w-[300px] text-xs"><span class="text-gray-300">${r.http_status ? esc(r.http_status) + ' · ' : ''}</span><span class="text-gray-400 break-words">${esc(r.message || '')}</span></td>
+                <td class="text-xs text-gray-500 whitespace-nowrap">${fmtTime(r.processed_at || r.created_at)}</td>
+              </tr>`;
+          }).join('')
+        : `<tr><td colspan="7" class="text-center text-gray-500 py-10">No submissions yet.</td></tr>`;
+      const from = data.total ? data.offset + 1 : 0;
+      $('pageInfo').textContent = `${from}–${data.offset + data.rows.length} of ${data.total}`;
+      $('prevBtn').disabled = page === 0;
+      $('nextBtn').disabled = data.offset + data.rows.length >= data.total;
+    }
+
+    let searchTimer;
+    $('search').addEventListener('input', () => {
+      clearTimeout(searchTimer);
+      searchTimer = setTimeout(() => { page = 0; loadLogs(); }, 300);
+    });
+    $('filterStatus').addEventListener('change', () => { page = 0; loadLogs(); });
+    $('filterMode').addEventListener('change', () => { page = 0; loadLogs(); });
+    $('prevBtn').addEventListener('click', () => { page = Math.max(0, page - 1); loadLogs(); });
+    $('nextBtn').addEventListener('click', () => { page++; loadLogs(); });
+    $('exportBtn').addEventListener('click', () => { window.location.href = `/api/logs/export?${logQuery()}`; });
+
+    $('retryBtn').addEventListener('click', async () => {
+      try {
+        const r = await api('/api/retry-failed', { method: 'POST' });
+        toast(`${r.requeued} failed URL(s) re-queued`, 'ok');
+        refresh();
+      } catch (err) { toast(err.message, 'error'); }
+    });
+
+    $('clearBtn').addEventListener('click', async () => {
+      if (!confirm('Remove all pending and quota-exceeded URLs from the queue?')) return;
+      try {
+        const r = await api('/api/queue/clear', { method: 'POST' });
+        toast(`${r.removed} queued URL(s) removed`, 'ok');
+        refresh();
+      } catch (err) { toast(err.message, 'error'); }
+    });
+
+    /* ----------------------------- submit ------------------------------ */
+
+    const countUrls = () => $('urls').value.split(/\r?\n/).filter((l) => l.trim()).length;
+    $('urls').addEventListener('input', () => { $('urlCount').textContent = countUrls(); });
+
+    function updateModeUi() {
+      const bridge = $('mode').value === 'BRIDGE';
+      $('strategy').disabled = !bridge;
+      $('modeHelp').textContent = bridge
+        ? 'BRIDGE: each URL gets a short slug on your Worker (e.g. idx.yourdomain.com/abc123xyz). The bridge URL is submitted to Google, which then crawls through to the target.'
+        : 'DIRECT: the URL itself is submitted. Its domain must be verified in Search Console with the service account email added as an Owner.';
+    }
+    $('mode').addEventListener('change', updateModeUi);
+
+    $('submitForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const msg = $('submitMsg');
+      $('submitBtn').disabled = true;
+      msg.className = 'text-sm text-gray-400';
+      msg.textContent = 'Queuing…';
+      try {
+        const r = await api('/api/submit', {
+          method: 'POST',
+          body: { urls: $('urls').value, mode: $('mode').value, strategy: $('strategy').value, action: $('action').value },
+        });
+        msg.className = 'text-sm text-emerald-300';
+        msg.textContent = `${r.queued} URL(s) queued` +
+          (r.duplicates ? `, ${r.duplicates} duplicate(s) skipped` : '') +
+          (r.invalid.length ? `, ${r.invalid.length} invalid skipped` : '');
+        $('urls').value = r.invalid.join('\n');
+        $('urlCount').textContent = countUrls();
+        page = 0;
+        refresh();
+      } catch (err) {
+        msg.className = 'text-sm text-red-300';
+        msg.textContent = err.message;
+      } finally {
+        $('submitBtn').disabled = false;
+      }
+    });
+
+    /* ----------------------------- header ------------------------------ */
+
+    $('pauseBtn').addEventListener('click', async () => {
+      try {
+        await api(stats?.queue.paused ? '/api/queue/resume' : '/api/queue/pause', { method: 'POST' });
+        loadStats();
+      } catch (err) { toast(err.message, 'error'); }
+    });
+
+    $('syncBtn').addEventListener('click', async () => {
+      try {
+        const r = await api('/api/sync-keys', { method: 'POST' });
+        const bad = r.invalid.length ? ` · ${r.invalid.length} invalid: ${r.invalid.map((i) => i.file).join(', ')}` : '';
+        toast(`Scanned ${r.scanned} file(s): ${r.valid} valid${bad}${r.missing ? ` · ${r.missing} removed` : ''}`, r.invalid.length ? 'error' : 'ok');
+        loadStats();
+      } catch (err) { toast(err.message, 'error'); }
+    });
+
+    /* ---------------------------- settings ----------------------------- */
+
+    async function loadSettings() {
+      settings = await api('/api/settings');
+      $('mode').value = settings.default_mode;
+      $('strategy').value = settings.default_strategy;
+      $('action').value = settings.default_action;
+      updateModeUi();
+    }
+
+    function openSettings() {
+      $('sBridge').value = settings.bridge_base_url;
+      $('sKey').value = '';
+      $('sKey').placeholder = settings.worker_api_key_set ? '•••••••• saved (leave empty to keep)' : 'Paste the API_KEY secret of your Worker';
+      $('sKeyClear').checked = false;
+      $('sDelay').value = settings.delay_ms;
+      $('sLimit').value = settings.daily_limit;
+      $('settingsMsg').textContent = '';
+      $('settingsModal').classList.remove('hidden');
+    }
+    const closeSettings = () => $('settingsModal').classList.add('hidden');
+
+    $('settingsBtn').addEventListener('click', openSettings);
+    document.querySelectorAll('[data-close]').forEach((el) => el.addEventListener('click', closeSettings));
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeSettings(); });
+
+    async function saveSettings() {
+      settings = await api('/api/settings', {
+        method: 'POST',
+        body: {
+          bridge_base_url: $('sBridge').value,
+          worker_api_key: $('sKey').value,
+          clear_worker_api_key: $('sKeyClear').checked,
+          delay_ms: $('sDelay').value,
+          daily_limit: $('sLimit').value,
+          default_mode: $('mode').value,
+          default_strategy: $('strategy').value,
+          default_action: $('action').value,
+        },
+      });
+    }
+
+    $('saveSettingsBtn').addEventListener('click', async () => {
+      try {
+        await saveSettings();
+        closeSettings();
+        toast('Settings saved', 'ok');
+        loadStats();
+      } catch (err) {
+        $('settingsMsg').className = 'text-sm text-red-300';
+        $('settingsMsg').textContent = err.message;
+      }
+    });
+
+    $('testBridgeBtn').addEventListener('click', async () => {
+      const msg = $('settingsMsg');
+      msg.className = 'text-sm text-gray-400';
+      msg.textContent = 'Saving and testing…';
+      try {
+        await saveSettings();
+        const r = await api('/api/settings/test-bridge', { method: 'POST' });
+        msg.className = `text-sm ${r.ok ? 'text-emerald-300' : 'text-red-300'}`;
+        msg.textContent = r.message;
+      } catch (err) {
+        msg.className = 'text-sm text-red-300';
+        msg.textContent = err.message;
+      }
+    });
+
+    /* ------------------------------ boot ------------------------------- */
+
+    function refresh() {
+      loadStats();
+      loadLogs();
+    }
+
+    loadSettings().catch((err) => toast(err.message, 'error'));
+    refresh();
+    setInterval(loadStats, 2000);
+    setInterval(() => { if (!document.hidden) loadLogs(); }, 3000);
+  </script>
+</body>
+</html>

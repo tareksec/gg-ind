@@ -1,0 +1,15 @@
+name = "smart-indexer-bridge"
+main = "worker.js"
+compatibility_date = "2025-01-01"
+
+# Create the namespace with:  npx wrangler kv namespace create LINKS_KV
+# then paste the "id" it prints below.
+[[kv_namespaces]]
+binding = "LINKS_KV"
+id = "PASTE_YOUR_KV_NAMESPACE_ID_HERE"
+
+# Serve the Worker on your bridge subdomain (the zone must be on Cloudflare).
+# Uncomment and set your domain, or add a Custom Domain in the dashboard instead.
+# routes = [
+#   { pattern = "idx.yourdomain.com", custom_domain = true }
+# ]
